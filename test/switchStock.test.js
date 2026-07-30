@@ -581,8 +581,9 @@ test('showWatchListDetail outputs every stock with complete detail columns', asy
     assert.match(output[0], /名称\s+\|\s+代码\s+\|\s+当前价\s+\|\s+涨跌\s+\|\s+涨跌幅/);
     assert.match(output[0], /今开\s+\|\s+最高\s+\|\s+最低\s+\|\s+振幅\s+\|\s+PE\s+\|\s+PB/);
     assert.match(output[0], /股息率\s+\|\s+成交量\s+\|\s+更新时间\s+\|\s+雪球详情/);
-    assert.match(output[0], /港股创新药ETF.*513120.*1\.234.*\+0\.002.*\+0\.16%.*1\.230.*1\.240.*1\.220.*1\.62%.*12\.30.*1\.50.*2\.00%.*1,234,567.*https:\/\/xueqiu\.com\/S\/SH513120/);
-    assert.match(output[0], /阅文集团.*00772.*26\.50.*-0\.50.*-1\.85%.*27\.00.*27\.50.*26\.00.*5\.56%.*15\.63.*3\.31.*1\.16%.*7,654,321.*2026-07-30 15:00:00（延迟约15分钟）.*https:\/\/xueqiu\.com\/S\/00772/);
+    assert.match(output[0], /港股创新药ETF\(A\).*513120.*1\.234.*\+0\.002.*\+0\.16%.*1\.230.*1\.240.*1\.220.*1\.62%.*12\.30.*1\.50.*2\.00%.*1,234,567.*https:\/\/xueqiu\.com\/S\/SH513120/);
+    assert.match(output[0], /阅文集团\(H\).*00772.*26\.50.*-0\.50.*-1\.85%.*27\.00.*27\.50.*26\.00.*5\.56%.*15\.63.*3\.31.*1\.16%.*7,654,321.*2026-07-30 15:00:00.*https:\/\/xueqiu\.com\/S\/00772/);
+    assert.doesNotMatch(output[0], /延迟约15分钟/);
   } finally {
     vscode.workspace.getConfiguration = originalGetConfiguration;
     vscode.window.createOutputChannel = originalCreateOutputChannel;

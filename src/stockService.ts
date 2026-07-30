@@ -11,7 +11,7 @@ import { calculateAmplitude, DataProvider, Quote } from './providers/baseProvide
 import { SmartProvider } from './providers/smartProvider';
 import { SinaStockSearchProvider, StockSearchResult } from './providers/stockSearchProvider';
 import { StatusBarManager } from './statusBarManager';
-import { formatPrice, normalizeSymbols, stripPrefix, getMarketTag, toXueqiuUrl } from './utils/symbolParser';
+import { formatPrice, normalizeSymbols, stripPrefix, getMarketTag, nameWithMarket, toXueqiuUrl } from './utils/symbolParser';
 import { HolidayCalendar } from './utils/holidayCalendar';
 import { getMarketStatusForSymbol } from './utils/marketTime';
 
@@ -45,7 +45,7 @@ function formatDetailTable(quotes: Quote[]): string {
     return value === undefined ? '--' : `${value.toFixed(2)}${suffix}`;
   };
   const columns: DetailTableColumn[] = [
-    { title: '名称', value: quote => quote.name },
+    { title: '名称', value: quote => nameWithMarket(quote.name, quote.symbol) },
     { title: '代码', value: quote => stripPrefix(quote.symbol) },
     { title: '当前价', value: quote => formatPrice(quote.symbol, quote.price) },
     {
@@ -66,9 +66,7 @@ function formatDetailTable(quotes: Quote[]): string {
     { title: '成交量', value: quote => quote.volume === undefined ? '--' : quote.volume.toLocaleString() },
     {
       title: '更新时间',
-      value: quote => quote.time
-        ? `${quote.time}${quote.delayed ? '（延迟约15分钟）' : ''}`
-        : '--',
+      value: quote => quote.time || '--',
     },
     { title: '雪球详情', value: quote => toXueqiuUrl(quote.symbol) },
   ];
