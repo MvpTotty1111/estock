@@ -512,3 +512,196 @@ test('showDetail displays exchange-traded fund prices with three decimal places'
     vscode.window.createOutputChannel = originalCreateOutputChannel;
   }
 });
+
+test('showWatchListDetail outputs every stock with complete detail columns', async () => {
+  const config = createConfig({
+    watchList: ['513120', '00772'],
+    displayList: [],
+    maxDisplay: 1,
+  });
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  const originalCreateOutputChannel = vscode.window.createOutputChannel;
+  const cache = new Map();
+  const output = [];
+
+  vscode.workspace.getConfiguration = () => config;
+  vscode.window.createOutputChannel = () => ({
+    clear() {},
+    appendLine(value) { output.push(value); },
+    show() {},
+  });
+
+  try {
+    const service = new StockService();
+    service.provider = {
+      name: 'test',
+      fetchQuotes: async () => [{
+        symbol: 'sh513120',
+        name: '港股创新药ETF',
+        price: 1.234,
+        change: 0.002,
+        changePercent: 0.16,
+        previousClose: 1.232,
+        open: 1.230,
+        high: 1.240,
+        low: 1.220,
+        volume: 1234567,
+        pe: 12.3,
+        pb: 1.5,
+        dividendYield: 2,
+        time: '2026-07-30 15:00:00',
+      }, {
+        symbol: 'hk00772',
+        name: '阅文集团',
+        price: 26.5,
+        change: -0.5,
+        changePercent: -1.85,
+        previousClose: 27,
+        open: 27,
+        high: 27.5,
+        low: 26,
+        volume: 7654321,
+        pe: 15.63,
+        pb: 3.31,
+        dividendYield: 1.16,
+        time: '2026-07-30 15:00:00',
+        delayed: true,
+      }],
+    };
+    service.statusBar = {
+      updateQuotes: (quotes) => {
+        for (const quote of quotes) cache.set(quote.symbol, quote);
+      },
+      getLastQuote: (symbol) => cache.get(symbol),
+    };
+
+    await service.showWatchListDetail();
+
+    assert.equal(output.length, 1);
+    assert.match(output[0], /名称\s+\|\s+代码\s+\|\s+当前价\s+\|\s+涨跌\s+\|\s+涨跌幅/);
+    assert.match(output[0], /今开\s+\|\s+最高\s+\|\s+最低\s+\|\s+振幅\s+\|\s+PE\s+\|\s+PB/);
+    assert.match(output[0], /股息率\s+\|\s+成交量\s+\|\s+更新时间\s+\|\s+雪球详情/);
+    assert.match(output[0], /港股创新药ETF.*513120.*1\.234.*\+0\.002.*\+0\.16%.*1\.230.*1\.240.*1\.220.*1\.62%.*12\.30.*1\.50.*2\.00%.*1,234,567.*https:\/\/xueqiu\.com\/S\/SH513120/);
+    assert.match(output[0], /阅文集团.*00772.*26\.50.*-0\.50.*-1\.85%.*27\.00.*27\.50.*26\.00.*5\.56%.*15\.63.*3\.31.*1\.16%.*7,654,321.*2026-07-30 15:00:00（延迟约15分钟）.*https:\/\/xueqiu\.com\/S\/00772/);
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+    vscode.window.createOutputChannel = originalCreateOutputChannel;
+  }
+});
+
+test('showWatchListDetail keeps partial results and lists unavailable stocks', async () => {
+  const config = createConfig({
+    watchList: ['601318', '00772'],
+    displayList: [],
+    maxDisplay: 1,
+  });
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  const originalCreateOutputChannel = vscode.window.createOutputChannel;
+  const cache = new Map([['hk00772', {
+    symbol: 'hk00772',
+    name: '阅文集团旧行情',
+    price: 25,
+    change: 1,
+    changePercent: 4.17,
+  }]]);
+  const output = [];
+
+  vscode.workspace.getConfiguration = () => config;
+  vscode.window.createOutputChannel = () => ({
+    clear() {},
+    appendLine(value) { output.push(value); },
+    show() {},
+  });
+
+  try {
+    const service = new StockService();
+    service.provider = {
+      name: 'test',
+      fetchQuotes: async () => [{
+        symbol: 'sh601318',
+        name: '中国平安',
+        price: 50,
+        change: 0,
+        changePercent: 0,
+      }],
+    };
+    service.statusBar = {
+      updateQuotes: (quotes) => {
+        for (const quote of quotes) cache.set(quote.symbol, quote);
+      },
+      getLastQuote: (symbol) => cache.get(symbol),
+    };
+
+    await service.showWatchListDetail();
+
+    assert.match(output[0], /中国平安.*601318.*50\.00.*\+0\.00.*\+0\.00%/);
+    assert.doesNotMatch(output[0], /阅文集团旧行情/);
+    assert.match(output[0], /--\s+\|\s+--\s+\|\s+--\s+\|\s+--/);
+    assert.match(output[0], /未获取到行情：00772/);
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+    vscode.window.createOutputChannel = originalCreateOutputChannel;
+  }
+});
+
+test('showWatchListDetail prompts when the watch list is empty', async () => {
+  const config = createConfig({
+    watchList: [],
+    displayList: [],
+    maxDisplay: 1,
+  });
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  const originalShowInformationMessage = vscode.window.showInformationMessage;
+  const messages = [];
+
+  vscode.workspace.getConfiguration = () => config;
+  vscode.window.showInformationMessage = (message) => {
+    messages.push(message);
+  };
+
+  try {
+    const service = new StockService();
+
+    await service.showWatchListDetail();
+
+    assert.deepEqual(messages, ['暂无股票数据，请先添加关注股票']);
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+    vscode.window.showInformationMessage = originalShowInformationMessage;
+  }
+});
+
+test('showWatchListDetail prompts when no stock quote is available', async () => {
+  const config = createConfig({
+    watchList: ['601318'],
+    displayList: [],
+    maxDisplay: 1,
+  });
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  const originalShowInformationMessage = vscode.window.showInformationMessage;
+  const messages = [];
+
+  vscode.workspace.getConfiguration = () => config;
+  vscode.window.showInformationMessage = (message) => {
+    messages.push(message);
+  };
+
+  try {
+    const service = new StockService();
+    service.provider = {
+      name: 'test',
+      fetchQuotes: async () => [],
+    };
+    service.statusBar = {
+      updateQuotes: () => undefined,
+      getLastQuote: () => undefined,
+    };
+
+    await service.showWatchListDetail();
+
+    assert.deepEqual(messages, ['暂无股票数据，请先刷新或检查股票池']);
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+    vscode.window.showInformationMessage = originalShowInformationMessage;
+  }
+});

@@ -60,6 +60,11 @@ export function activate(ctx: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('estock.showDetail', async () => {
       await stockService?.showDetail();
     }),
+
+    // 命令面板 → 查看股票池全部详情。
+    vscode.commands.registerCommand('estock.showWatchListDetail', async () => {
+      await stockService?.showWatchListDetail();
+    }),
   );
 
   stockService.activate(ctx, statusBar);

@@ -19,6 +19,75 @@ interface StockSearchProvider {
   search(keyword: string): Promise<StockSearchResult[]>;
 }
 
+interface DetailTableColumn {
+  title: string;
+  value: (quote: Quote) => string;
+}
+
+/** 计算文本在等宽终端中的显示宽度。 */
+function displayWidth(value: string): number {
+  return Array.from(value).reduce((width, character) => {
+    return width + (/[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe10-\ufe19\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6]/u.test(character) ? 2 : 1);
+  }, 0);
+}
+
+/** 使用空格补齐表格单元格。 */
+function padTableCell(value: string, width: number): string {
+  return value + ' '.repeat(Math.max(width - displayWidth(value), 0));
+}
+
+/** 将股票详情格式化为纯文本表格。 */
+function formatDetailTable(quotes: Quote[]): string {
+  const optionalPrice = (quote: Quote, value: number | undefined): string => {
+    return value === undefined ? '--' : formatPrice(quote.symbol, value);
+  };
+  const optionalNumber = (value: number | undefined, suffix = ''): string => {
+    return value === undefined ? '--' : `${value.toFixed(2)}${suffix}`;
+  };
+  const columns: DetailTableColumn[] = [
+    { title: '名称', value: quote => quote.name },
+    { title: '代码', value: quote => stripPrefix(quote.symbol) },
+    { title: '当前价', value: quote => formatPrice(quote.symbol, quote.price) },
+    {
+      title: '涨跌',
+      value: quote => `${quote.change >= 0 ? '+' : ''}${formatPrice(quote.symbol, quote.change)}`,
+    },
+    {
+      title: '涨跌幅',
+      value: quote => `${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent.toFixed(2)}%`,
+    },
+    { title: '今开', value: quote => optionalPrice(quote, quote.open) },
+    { title: '最高', value: quote => optionalPrice(quote, quote.high) },
+    { title: '最低', value: quote => optionalPrice(quote, quote.low) },
+    { title: '振幅', value: quote => optionalNumber(calculateAmplitude(quote), '%') },
+    { title: 'PE', value: quote => optionalNumber(quote.pe) },
+    { title: 'PB', value: quote => optionalNumber(quote.pb) },
+    { title: '股息率', value: quote => optionalNumber(quote.dividendYield, '%') },
+    { title: '成交量', value: quote => quote.volume === undefined ? '--' : quote.volume.toLocaleString() },
+    {
+      title: '更新时间',
+      value: quote => quote.time
+        ? `${quote.time}${quote.delayed ? '（延迟约15分钟）' : ''}`
+        : '--',
+    },
+    { title: '雪球详情', value: quote => toXueqiuUrl(quote.symbol) },
+  ];
+  const rows = quotes.map(quote => columns.map(column => column.value(quote)));
+  const widths = columns.map((column, index) => {
+    return Math.max(displayWidth(column.title), ...rows.map(row => displayWidth(row[index])));
+  });
+  const renderRow = (values: string[]): string => {
+    return values.map((value, index) => padTableCell(value, widths[index])).join(' | ');
+  };
+  const separator = widths.map(width => '-'.repeat(width)).join('-+-');
+
+  return [
+    renderRow(columns.map(column => column.title)),
+    separator,
+    ...rows.map(renderRow),
+  ].join('\n');
+}
+
 export class StockService {
   private provider!: DataProvider;
   private statusBar!: StatusBarManager;
@@ -154,15 +223,17 @@ export class StockService {
     }
   }
 
-  private async refreshSymbols(symbols: string[]): Promise<void> {
-    if (this.isRefreshing || symbols.length === 0) return;
+  private async refreshSymbols(symbols: string[]): Promise<Quote[]> {
+    if (this.isRefreshing || symbols.length === 0) return [];
 
     this.isRefreshing = true;
     try {
       const quotes = await this.provider.fetchQuotes(symbols);
       this.statusBar.updateQuotes(quotes);
+      return quotes;
     } catch (e) {
       console.warn('[estock] refreshOnce failed', e);
+      return [];
     } finally {
       this.isRefreshing = false;
     }
@@ -395,6 +466,40 @@ export class StockService {
     }
     lines.push(`  雪球详情：${toXueqiuUrl(quote.symbol)}`);
     lines.push(``, `╚══════════════════════════════════════╝`);
+
+    channel.clear();
+    channel.appendLine(lines.join('\n'));
+    channel.show(true);
+  }
+
+  /** 以表格展示股票池中全部股票的详情。 */
+  async showWatchListDetail(): Promise<void> {
+    const symbols = this.watchList;
+
+    if (symbols.length === 0) {
+      vscode.window.showInformationMessage('暂无股票数据，请先添加关注股票');
+      return;
+    }
+
+    const refreshedQuotes = await this.refreshSymbols(symbols);
+    const quoteBySymbol = new Map(refreshedQuotes.map(quote => [quote.symbol, quote]));
+    const quotes = symbols
+      .map(symbol => quoteBySymbol.get(symbol))
+      .filter((quote): quote is Quote => quote !== undefined);
+
+    if (quotes.length === 0) {
+      vscode.window.showInformationMessage('暂无股票数据，请先刷新或检查股票池');
+      return;
+    }
+
+    const channel = vscode.window.createOutputChannel('码盯·撸得金');
+    const missingSymbols = symbols.filter(symbol => {
+      return !quotes.some(quote => quote.symbol === symbol);
+    });
+    const lines = [formatDetailTable(quotes)];
+    if (missingSymbols.length > 0) {
+      lines.push('', `未获取到行情：${missingSymbols.map(stripPrefix).join('、')}`);
+    }
 
     channel.clear();
     channel.appendLine(lines.join('\n'));

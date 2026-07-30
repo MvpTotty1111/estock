@@ -44,6 +44,7 @@
     "onCommand:estock.addStock",
     "onCommand:estock.removeStock",
     "onCommand:estock.showDetail",
+    "onCommand:estock.showWatchListDetail",
     "onCommand:estock.switchStock"
   ],
   "contributes": {
@@ -131,6 +132,10 @@
       {
         "command": "estock.showDetail",
         "title": "estock: 查看股票详情"
+      },
+      {
+        "command": "estock.showWatchListDetail",
+        "title": "estock: 查看股票池股票详情"
       },
       {
         "command": "estock.switchStock",
