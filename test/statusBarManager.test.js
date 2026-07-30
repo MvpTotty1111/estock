@@ -127,7 +127,7 @@ test('display format supports currency placeholder for China and Hong Kong stock
     assert.match(items[0].tooltip.value, /最高：51\.00/);
     assert.match(items[0].tooltip.value, /最低：48\.00/);
     assert.match(items[0].tooltip.value, /振幅：6\.12%/);
-    assert.match(items[0].tooltip.value, /PE：8\.88/);
+    assert.match(items[0].tooltip.value, /PE\(TTM\)：8\.88/);
     assert.match(items[0].tooltip.value, /PB：1\.23/);
     assert.match(items[0].tooltip.value, /股息率：4\.56%/);
     assert.match(items[0].tooltip.value, /成交量：12,345/);
@@ -181,6 +181,155 @@ test('displays exchange-traded fund prices with three decimal places', () => {
     assert.match(items[0].tooltip.value, /今开：1\.236/);
     assert.match(items[0].tooltip.value, /最高：1\.240/);
     assert.match(items[0].tooltip.value, /最低：1\.230/);
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+    vscode.window.createStatusBarItem = originalCreateStatusBarItem;
+  }
+});
+
+test('appends an upward movement alert to the stock item and restores it after thirty seconds', () => {
+  const config = createConfig({
+    displayFormat: '${name} ${changePercent} (${currency}${price})',
+    statusBarAlignment: 'center',
+    priceAlertEnabled: true,
+    priceAlertWindowSeconds: 11,
+    priceAlertColor: '#ffcc00',
+    colorUp: '#ff0000',
+    colorDown: '#00ff00',
+    colorFlat: '#cccccc',
+    colorClosed: '#777777',
+  });
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  const originalCreateStatusBarItem = vscode.window.createStatusBarItem;
+  const items = [];
+  let now = 0;
+  let timeoutCallback;
+  let timeoutDelay;
+
+  vscode.workspace.getConfiguration = () => config;
+  vscode.window.createStatusBarItem = (_alignment, priority) => {
+    const item = {
+      priority,
+      visible: false,
+      show() { this.visible = true; },
+      hide() { this.visible = false; },
+      dispose() {},
+    };
+    items.push(item);
+    return item;
+  };
+
+  try {
+    const manager = new StatusBarManager({
+      now: () => now,
+      scheduleTimeout: (callback, delay) => {
+        timeoutCallback = callback;
+        timeoutDelay = delay;
+        return 1;
+      },
+      cancelTimeout() {},
+    });
+    manager.reload(['sh601318']);
+    manager.updateQuotes([{
+      symbol: 'sh601318',
+      name: '中国平安',
+      price: 100,
+      change: 0,
+      changePercent: 0,
+    }]);
+
+    now = 11000;
+    manager.updateQuotes([{
+      symbol: 'sh601318',
+      name: '中国平安',
+      price: 101.2,
+      change: 1.2,
+      changePercent: 1.2,
+    }]);
+
+    assert.equal(items.length, 1);
+    assert.equal(items[0].text, '中国平安(A) +1.20% (¥101.20)｜🚀');
+    assert.equal(items[0].color, '#ffcc00');
+    assert.match(items[0].tooltip.value, /异动提醒：11秒内股价波动 \+1\.20%。/);
+    assert.equal(timeoutDelay, 30000);
+
+    now = 130000;
+    manager.updateQuotes([{
+      symbol: 'sh601318',
+      name: '中国平安',
+      price: 101.21,
+      change: 1.21,
+      changePercent: 1.21,
+    }]);
+    assert.equal(items[0].text, '中国平安(A) +1.21% (¥101.21)｜🚀');
+    assert.equal(items[0].color, '#ffcc00');
+
+    timeoutCallback();
+    assert.equal(items[0].text, '中国平安(A) +1.21% (¥101.21)');
+    assert.equal(items[0].color, '#ff0000');
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+    vscode.window.createStatusBarItem = originalCreateStatusBarItem;
+  }
+});
+
+test('appends a downward movement alert using the shared configured color', () => {
+  const config = createConfig({
+    displayFormat: '${name} ${changePercent} (${currency}${price})',
+    statusBarAlignment: 'center',
+    priceAlertEnabled: true,
+    priceAlertWindowSeconds: 1.5,
+    priceAlertThresholdPercent: 1,
+    priceAlertColor: '#cc66ff',
+    colorUp: '#ff0000',
+    colorDown: '#00ff00',
+    colorFlat: '#cccccc',
+    colorClosed: '#777777',
+  });
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  const originalCreateStatusBarItem = vscode.window.createStatusBarItem;
+  const items = [];
+  let now = 0;
+
+  vscode.workspace.getConfiguration = () => config;
+  vscode.window.createStatusBarItem = () => {
+    const item = {
+      show() {},
+      hide() {},
+      dispose() {},
+    };
+    items.push(item);
+    return item;
+  };
+
+  try {
+    const manager = new StatusBarManager({
+      now: () => now,
+      scheduleTimeout: () => 1,
+      cancelTimeout() {},
+    });
+    manager.reload(['sh601318']);
+    manager.updateQuotes([{
+      symbol: 'sh601318',
+      name: '中国平安',
+      price: 100,
+      change: 0,
+      changePercent: 0,
+    }]);
+
+    now = 120000;
+    manager.updateQuotes([{
+      symbol: 'sh601318',
+      name: '中国平安',
+      price: 98.8,
+      change: -1.2,
+      changePercent: -1.2,
+    }]);
+
+    assert.equal(items.length, 1);
+    assert.equal(items[0].text, '中国平安(A) -1.20% (¥98.80)｜💥');
+    assert.equal(items[0].color, '#cc66ff');
+    assert.match(items[0].tooltip.value, /异动提醒：120秒内股价波动 -1\.20%。/);
   } finally {
     vscode.workspace.getConfiguration = originalGetConfiguration;
     vscode.window.createStatusBarItem = originalCreateStatusBarItem;

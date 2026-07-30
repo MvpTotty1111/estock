@@ -11,6 +11,7 @@
 - 支持股票池管理和状态栏展示列表。
 - 点击状态栏股票即可切换展示内容。
 - 交易时段自动刷新，休市后显示「休市」。
+- 异动提醒：配置周期内股价达到阈值时，在状态栏显示短时提醒。
 - 支持手动刷新、查看详情、调整颜色和展示格式。
 
 ## 安装
@@ -73,6 +74,10 @@
 | `estock.displayList` | `["hk00700", "sh601318", "sz002027"]` | 状态栏展示列表，决定显示哪些股票和显示顺序。 |
 | `estock.maxDisplay` | `3` | 展示列表为空时，最多从股票池中展示几只股票。 |
 | `estock.refreshInterval` | `10` | 自动刷新间隔，单位为秒，最小值为 5。 |
+| `estock.priceAlertEnabled` | `true` | 是否显示异动提醒。 |
+| `estock.priceAlertWindowSeconds` | `120` | 异动提醒统计周期，单位为秒，可填写任意不小于 1 的整数。 |
+| `estock.priceAlertThresholdPercent` | `1` | 异动提醒阈值，按配置周期内的涨跌幅计算，最小值为 0.1。 |
+| `estock.priceAlertColor` | `"#FFD700"` | 异动提醒颜色。 |
 | `estock.displayFormat` | `"${name} ${changePercent} (${currency}${price})"` | 状态栏展示格式。 |
 | `estock.statusBarAlignment` | `"center"` | 状态栏位置，可选 `left`、`center`、`right`。 |
 | `estock.colorUp` | `"#FAAFA0"` | 上涨颜色。 |

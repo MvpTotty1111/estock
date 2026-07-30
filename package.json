@@ -2,7 +2,7 @@
   "name": "estock-watcher",
   "displayName": "码盯·撸得金",
   "description": "边码字，边盯盘，撸得真金。",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "icon": "icon.png",
   "publisher": "estock",
   "author": {
@@ -77,42 +77,68 @@
           "description": "刷新间隔（秒），最小值5",
           "order": 3
         },
+        "estock.priceAlertEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否在状态栏显示异动提醒",
+          "order": 4
+        },
+        "estock.priceAlertWindowSeconds": {
+          "type": "integer",
+          "default": 120,
+          "minimum": 1,
+          "description": "异动提醒统计周期（秒）",
+          "order": 5
+        },
+        "estock.priceAlertThresholdPercent": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0.1,
+          "description": "异动提醒阈值：配置周期内的涨跌幅（%）",
+          "order": 6
+        },
+        "estock.priceAlertColor": {
+          "type": "string",
+          "default": "#FFD700",
+          "description": "异动提醒颜色（十六进制色值）",
+          "order": 7
+        },
         "estock.displayFormat": {
           "type": "string",
           "default": "${name} ${changePercent} (${currency}${price})",
           "description": "状态栏显示格式。可用变量：${name}, ${price}, ${currency}, ${change}, ${changePercent}, ${volume}",
-          "order": 4
+          "order": 8
         },
         "estock.statusBarAlignment": {
           "type": "string",
           "default": "center",
           "enum": ["left", "center", "right"],
           "description": "状态栏显示位置：left=左侧，center=居中，right=右侧",
-          "order": 5
+          "order": 9
         },
         "estock.colorUp": {
           "type": "string",
           "default": "#FAAFA0",
           "description": "上涨颜色（十六进制色值，红色系）",
-          "order": 6
+          "order": 10
         },
         "estock.colorDown": {
           "type": "string",
           "default": "#4EC9B0",
           "description": "下跌颜色（十六进制色值，绿色系）",
-          "order": 7
+          "order": 11
         },
         "estock.colorFlat": {
           "type": "string",
           "default": "#CCCCCC",
           "description": "平盘颜色（十六进制色值）",
-          "order": 8
+          "order": 12
         },
         "estock.colorClosed": {
           "type": "string",
           "default": "#AAAAAA",
           "description": "休市颜色（收盘后统一使用）",
-          "order": 9
+          "order": 13
         }
       }
     },

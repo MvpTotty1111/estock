@@ -346,7 +346,7 @@ test('showDetail includes a clickable Xueqiu URL', async () => {
 
     assert.match(output[0], /雪球详情：https:\/\/xueqiu\.com\/S\/00772/);
     assert.match(output[0], /振幅：\s+7\.69%/);
-    assert.match(output[0], /PE：\s+15\.63/);
+    assert.match(output[0], /PE\(TTM\)：\s+15\.63/);
     assert.match(output[0], /PB：\s+3\.31/);
     assert.match(output[0], /股息率：\s+1\.16%/);
     assert.match(output[0], /更新时间：.*\(延迟约15分钟\)/);
@@ -579,11 +579,73 @@ test('showWatchListDetail outputs every stock with complete detail columns', asy
 
     assert.equal(output.length, 1);
     assert.match(output[0], /名称\s+\|\s+代码\s+\|\s+当前价\s+\|\s+涨跌\s+\|\s+涨跌幅/);
-    assert.match(output[0], /今开\s+\|\s+最高\s+\|\s+最低\s+\|\s+振幅\s+\|\s+PE\s+\|\s+PB/);
+    assert.match(output[0], /今开\s+\|\s+最高\s+\|\s+最低\s+\|\s+振幅\s+\|\s+PE\(TTM\)\s+\|\s+PB/);
     assert.match(output[0], /股息率\s+\|\s+成交量\s+\|\s+更新时间\s+\|\s+雪球详情/);
     assert.match(output[0], /港股创新药ETF\(A\).*513120.*1\.234.*\+0\.002.*\+0\.16%.*1\.230.*1\.240.*1\.220.*1\.62%.*12\.30.*1\.50.*2\.00%.*1,234,567.*https:\/\/xueqiu\.com\/S\/SH513120/);
     assert.match(output[0], /阅文集团\(H\).*00772.*26\.50.*-0\.50.*-1\.85%.*27\.00.*27\.50.*26\.00.*5\.56%.*15\.63.*3\.31.*1\.16%.*7,654,321.*2026-07-30 15:00:00.*https:\/\/xueqiu\.com\/S\/00772/);
     assert.doesNotMatch(output[0], /延迟约15分钟/);
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+    vscode.window.createOutputChannel = originalCreateOutputChannel;
+  }
+});
+
+test('showWatchListDetail sorts stocks by name and then code', async () => {
+  const config = createConfig({
+    watchList: ['601318', '02318', '09988'],
+    displayList: [],
+    maxDisplay: 1,
+  });
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  const originalCreateOutputChannel = vscode.window.createOutputChannel;
+  const cache = new Map();
+  const output = [];
+
+  vscode.workspace.getConfiguration = () => config;
+  vscode.window.createOutputChannel = () => ({
+    clear() {},
+    appendLine(value) { output.push(value); },
+    show() {},
+  });
+
+  try {
+    const service = new StockService();
+    service.provider = {
+      name: 'test',
+      fetchQuotes: async () => [{
+        symbol: 'sh601318',
+        name: '中国平安',
+        price: 50,
+        change: 0,
+        changePercent: 0,
+      }, {
+        symbol: 'hk02318',
+        name: '中国平安',
+        price: 40,
+        change: 0,
+        changePercent: 0,
+      }, {
+        symbol: 'hk09988',
+        name: '阿里巴巴',
+        price: 100,
+        change: 0,
+        changePercent: 0,
+      }],
+    };
+    service.statusBar = {
+      updateQuotes: (quotes) => {
+        for (const quote of quotes) cache.set(quote.symbol, quote);
+      },
+      getLastQuote: (symbol) => cache.get(symbol),
+    };
+
+    await service.showWatchListDetail();
+
+    const alibabaIndex = output[0].indexOf('阿里巴巴(H)');
+    const pingAnHongKongIndex = output[0].indexOf('中国平安(H)');
+    const pingAnChinaIndex = output[0].indexOf('中国平安(A)');
+    assert.ok(alibabaIndex < pingAnHongKongIndex);
+    assert.ok(pingAnHongKongIndex < pingAnChinaIndex);
   } finally {
     vscode.workspace.getConfiguration = originalGetConfiguration;
     vscode.window.createOutputChannel = originalCreateOutputChannel;
@@ -624,6 +686,12 @@ test('showWatchListDetail keeps partial results and lists unavailable stocks', a
         price: 50,
         change: 0,
         changePercent: 0,
+      }, {
+        symbol: 'hk00772',
+        name: 'hk00772',
+        price: 0,
+        change: 0,
+        changePercent: 0,
       }],
     };
     service.statusBar = {
@@ -639,6 +707,120 @@ test('showWatchListDetail keeps partial results and lists unavailable stocks', a
     assert.doesNotMatch(output[0], /阅文集团旧行情/);
     assert.match(output[0], /--\s+\|\s+--\s+\|\s+--\s+\|\s+--/);
     assert.match(output[0], /未获取到行情：00772/);
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+    vscode.window.createOutputChannel = originalCreateOutputChannel;
+  }
+});
+
+test('showWatchListDetail waits for an active refresh before requesting complete quotes', async () => {
+  const config = createConfig({
+    watchList: ['601318'],
+    displayList: [],
+    maxDisplay: 1,
+  });
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  const originalCreateOutputChannel = vscode.window.createOutputChannel;
+  const output = [];
+  let fetchCount = 0;
+  let resolveFirstFetch;
+
+  vscode.workspace.getConfiguration = () => config;
+  vscode.window.createOutputChannel = () => ({
+    clear() {},
+    appendLine(value) { output.push(value); },
+    show() {},
+    dispose() {},
+  });
+
+  try {
+    const service = new StockService();
+    service.provider = {
+      name: 'test',
+      fetchQuotes: async () => {
+        fetchCount += 1;
+        if (fetchCount === 1) {
+          return new Promise(resolve => {
+            resolveFirstFetch = resolve;
+          });
+        }
+        return [{
+          symbol: 'sh601318',
+          name: '中国平安',
+          price: 50,
+          change: 0,
+          changePercent: 0,
+        }];
+      },
+    };
+    service.statusBar = {
+      updateQuotes() {},
+      getLastQuote() { return undefined; },
+    };
+
+    const activeRefresh = service.refreshSymbols(['sh601318']);
+    const detailRefresh = service.showWatchListDetail();
+    resolveFirstFetch([{
+      symbol: 'sh601318',
+      name: '中国平安',
+      price: 49,
+      change: 0,
+      changePercent: 0,
+    }]);
+
+    await activeRefresh;
+    await detailRefresh;
+
+    assert.equal(fetchCount, 2);
+    assert.match(output[0], /中国平安.*601318.*50\.00/);
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+    vscode.window.createOutputChannel = originalCreateOutputChannel;
+  }
+});
+
+test('showWatchListDetail reuses its output channel', async () => {
+  const config = createConfig({
+    watchList: ['601318'],
+    displayList: [],
+    maxDisplay: 1,
+  });
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  const originalCreateOutputChannel = vscode.window.createOutputChannel;
+  let channelCount = 0;
+
+  vscode.workspace.getConfiguration = () => config;
+  vscode.window.createOutputChannel = () => {
+    channelCount += 1;
+    return {
+      clear() {},
+      appendLine() {},
+      show() {},
+      dispose() {},
+    };
+  };
+
+  try {
+    const service = new StockService();
+    service.provider = {
+      name: 'test',
+      fetchQuotes: async () => [{
+        symbol: 'sh601318',
+        name: '中国平安',
+        price: 50,
+        change: 0,
+        changePercent: 0,
+      }],
+    };
+    service.statusBar = {
+      updateQuotes() {},
+      getLastQuote() { return undefined; },
+    };
+
+    await service.showWatchListDetail();
+    await service.showWatchListDetail();
+
+    assert.equal(channelCount, 1);
   } finally {
     vscode.workspace.getConfiguration = originalGetConfiguration;
     vscode.window.createOutputChannel = originalCreateOutputChannel;

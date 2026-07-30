@@ -36,8 +36,18 @@ function padTableCell(value: string, width: number): string {
   return value + ' '.repeat(Math.max(width - displayWidth(value), 0));
 }
 
+/** 判断行情是否包含可展示的有效价格。 */
+function isAvailableQuote(quote: Quote | undefined): quote is Quote {
+  return quote !== undefined && Number.isFinite(quote.price) && quote.price > 0;
+}
+
 /** 将股票详情格式化为纯文本表格。 */
 function formatDetailTable(quotes: Quote[]): string {
+  const sortedQuotes = [...quotes].sort((left, right) => {
+    const nameOrder = left.name.localeCompare(right.name, 'zh-CN');
+    if (nameOrder !== 0) return nameOrder;
+    return stripPrefix(left.symbol).localeCompare(stripPrefix(right.symbol), undefined, { numeric: true });
+  });
   const optionalPrice = (quote: Quote, value: number | undefined): string => {
     return value === undefined ? '--' : formatPrice(quote.symbol, value);
   };
@@ -60,7 +70,7 @@ function formatDetailTable(quotes: Quote[]): string {
     { title: '最高', value: quote => optionalPrice(quote, quote.high) },
     { title: '最低', value: quote => optionalPrice(quote, quote.low) },
     { title: '振幅', value: quote => optionalNumber(calculateAmplitude(quote), '%') },
-    { title: 'PE', value: quote => optionalNumber(quote.pe) },
+    { title: 'PE(TTM)', value: quote => optionalNumber(quote.pe) },
     { title: 'PB', value: quote => optionalNumber(quote.pb) },
     { title: '股息率', value: quote => optionalNumber(quote.dividendYield, '%') },
     { title: '成交量', value: quote => quote.volume === undefined ? '--' : quote.volume.toLocaleString() },
@@ -70,7 +80,7 @@ function formatDetailTable(quotes: Quote[]): string {
     },
     { title: '雪球详情', value: quote => toXueqiuUrl(quote.symbol) },
   ];
-  const rows = quotes.map(quote => columns.map(column => column.value(quote)));
+  const rows = sortedQuotes.map(quote => columns.map(column => column.value(quote)));
   const widths = columns.map((column, index) => {
     return Math.max(displayWidth(column.title), ...rows.map(row => displayWidth(row[index])));
   });
@@ -91,7 +101,8 @@ export class StockService {
   private statusBar!: StatusBarManager;
   private timer?: NodeJS.Timeout;
   private ctx!: vscode.ExtensionContext;
-  private isRefreshing = false;
+  private activeRefresh?: Promise<Quote[]>;
+  private outputChannel?: vscode.OutputChannel;
   private holidayCalendar = new HolidayCalendar();
   private searchProvider: StockSearchProvider;
 
@@ -222,19 +233,40 @@ export class StockService {
   }
 
   private async refreshSymbols(symbols: string[]): Promise<Quote[]> {
-    if (this.isRefreshing || symbols.length === 0) return [];
+    if (this.activeRefresh || symbols.length === 0) return [];
 
-    this.isRefreshing = true;
-    try {
-      const quotes = await this.provider.fetchQuotes(symbols);
-      this.statusBar.updateQuotes(quotes);
-      return quotes;
-    } catch (e) {
-      console.warn('[estock] refreshOnce failed', e);
-      return [];
-    } finally {
-      this.isRefreshing = false;
+    const refresh = (async (): Promise<Quote[]> => {
+      try {
+        const quotes = await this.provider.fetchQuotes(symbols);
+        this.statusBar.updateQuotes(quotes);
+        return quotes;
+      } catch (e) {
+        console.warn('[estock] refreshOnce failed', e);
+        return [];
+      }
+    })();
+    const trackedRefresh = refresh.finally(() => {
+      if (this.activeRefresh === trackedRefresh) {
+        this.activeRefresh = undefined;
+      }
+    });
+    this.activeRefresh = trackedRefresh;
+    return trackedRefresh;
+  }
+
+  /** 等待当前刷新结束，避免详情命令把“正在刷新”误判为无行情。 */
+  private async waitForActiveRefresh(): Promise<void> {
+    while (this.activeRefresh) {
+      await this.activeRefresh;
     }
+  }
+
+  /** 获取详情页面共用的输出通道。 */
+  private getOutputChannel(): vscode.OutputChannel {
+    if (!this.outputChannel) {
+      this.outputChannel = vscode.window.createOutputChannel('码盯·撸得金');
+    }
+    return this.outputChannel;
   }
 
   /** 添加股票到股票池 */
@@ -440,7 +472,7 @@ export class StockService {
 
     const tag = getMarketTag(quote.symbol);
     const price = (value: number): string => formatPrice(quote.symbol, value);
-    const channel = vscode.window.createOutputChannel('码盯·撸得金');
+    const channel = this.getOutputChannel();
     const lines: string[] = [
       `╔══════════════════════════════════════╗`,
       `║  ${quote.name}(${tag}) (${stripPrefix(quote.symbol)})`,
@@ -454,7 +486,7 @@ export class StockService {
     if (quote.low !== undefined) lines.push(`  最低：    ${price(quote.low)}`);
     const amplitude = calculateAmplitude(quote);
     if (amplitude !== undefined) lines.push(`  振幅：    ${amplitude.toFixed(2)}%`);
-    if (quote.pe !== undefined) lines.push(`  PE：      ${quote.pe.toFixed(2)}`);
+    if (quote.pe !== undefined) lines.push(`  PE(TTM)： ${quote.pe.toFixed(2)}`);
     if (quote.pb !== undefined) lines.push(`  PB：      ${quote.pb.toFixed(2)}`);
     if (quote.dividendYield !== undefined) lines.push(`  股息率：  ${quote.dividendYield.toFixed(2)}%`);
     if (quote.volume !== undefined) lines.push(`  成交量：  ${quote.volume.toLocaleString()}`);
@@ -479,8 +511,13 @@ export class StockService {
       return;
     }
 
+    await this.waitForActiveRefresh();
     const refreshedQuotes = await this.refreshSymbols(symbols);
-    const quoteBySymbol = new Map(refreshedQuotes.map(quote => [quote.symbol, quote]));
+    const quoteBySymbol = new Map(
+      refreshedQuotes
+        .filter(isAvailableQuote)
+        .map(quote => [quote.symbol, quote]),
+    );
     const quotes = symbols
       .map(symbol => quoteBySymbol.get(symbol))
       .filter((quote): quote is Quote => quote !== undefined);
@@ -490,10 +527,9 @@ export class StockService {
       return;
     }
 
-    const channel = vscode.window.createOutputChannel('码盯·撸得金');
-    const missingSymbols = symbols.filter(symbol => {
-      return !quotes.some(quote => quote.symbol === symbol);
-    });
+    const channel = this.getOutputChannel();
+    const availableSymbols = new Set(quotes.map(quote => quote.symbol));
+    const missingSymbols = symbols.filter(symbol => !availableSymbols.has(symbol));
     const lines = [formatDetailTable(quotes)];
     if (missingSymbols.length > 0) {
       lines.push('', `未获取到行情：${missingSymbols.map(stripPrefix).join('、')}`);
@@ -506,6 +542,8 @@ export class StockService {
 
   dispose(): void {
     this.stopTimer();
+    this.outputChannel?.dispose();
+    this.outputChannel = undefined;
     this.statusBar.dispose();
   }
 }

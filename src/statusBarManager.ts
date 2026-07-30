@@ -13,11 +13,38 @@ import {
   toXueqiuUrl,
   formatPrice,
 } from './utils/symbolParser';
+import { PriceMovementAlert, PriceMovementTracker } from './priceMovementTracker';
+
+const DEFAULT_PRICE_ALERT_WINDOW_SECONDS = 120;
+
+interface StatusBarManagerDependencies {
+  now?: () => number;
+  scheduleTimeout?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
+  cancelTimeout?: (timer: ReturnType<typeof setTimeout>) => void;
+}
 
 export class StatusBarManager {
   private items: vscode.StatusBarItem[] = [];
   private lastQuotes: Map<string, Quote> = new Map();
   private displayList: string[] = [];
+  private movementTracker = new PriceMovementTracker({
+    thresholdPercent: 1,
+    windowMs: DEFAULT_PRICE_ALERT_WINDOW_SECONDS * 1000,
+  });
+  private alertTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private activeAlerts = new Map<string, PriceMovementAlert>();
+  private priceAlertEnabled = true;
+  private priceAlertWindowSeconds = DEFAULT_PRICE_ALERT_WINDOW_SECONDS;
+  private priceAlertColor = '#FFD700';
+  private readonly now: () => number;
+  private readonly scheduleTimeout: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
+  private readonly cancelTimeout: (timer: ReturnType<typeof setTimeout>) => void;
+
+  constructor(dependencies: StatusBarManagerDependencies = {}) {
+    this.now = dependencies.now ?? Date.now;
+    this.scheduleTimeout = dependencies.scheduleTimeout ?? setTimeout;
+    this.cancelTimeout = dependencies.cancelTimeout ?? clearTimeout;
+  }
 
   /** 从配置中读取颜色 */
   private getColors() {
@@ -50,6 +77,26 @@ export class StatusBarManager {
     this.displayList = displayList;
     const { alignment, basePriority } = this.getAlignmentConfig();
     const colors = this.getColors();
+    const cfg = vscode.workspace.getConfiguration('estock');
+    this.priceAlertEnabled = cfg.get<boolean>('priceAlertEnabled', true);
+    this.priceAlertColor = cfg.get<string>('priceAlertColor', '#FFD700');
+    const configuredWindowSeconds = cfg.get<number>(
+      'priceAlertWindowSeconds',
+      DEFAULT_PRICE_ALERT_WINDOW_SECONDS,
+    );
+    this.priceAlertWindowSeconds = Number.isFinite(configuredWindowSeconds)
+      && Number.isInteger(configuredWindowSeconds)
+      && configuredWindowSeconds >= 1
+      ? configuredWindowSeconds
+      : DEFAULT_PRICE_ALERT_WINDOW_SECONDS;
+    const configuredThreshold = cfg.get<number>('priceAlertThresholdPercent', 1);
+    const thresholdPercent = Number.isFinite(configuredThreshold)
+      ? Math.max(configuredThreshold, 0.1)
+      : 1;
+    this.movementTracker = new PriceMovementTracker({
+      thresholdPercent,
+      windowMs: this.priceAlertWindowSeconds * 1000,
+    });
 
     displayList.forEach((symbol, index) => {
       const item = vscode.window.createStatusBarItem(
@@ -73,6 +120,7 @@ export class StatusBarManager {
   /** 用最新行情更新状态栏（盘中调用） */
   updateQuotes(quotes: Quote[]): void {
     const colors = this.getColors();
+    const now = this.now();
     // 先把所有 quotes 存入缓存
     for (const q of quotes) {
       this.lastQuotes.set(q.symbol, q);
@@ -86,6 +134,15 @@ export class StatusBarManager {
       item.text = this.formatText(quote, false);
       item.color = this.getColor(quote, colors);
       item.tooltip = this.buildTooltip(quote);
+      if (this.priceAlertEnabled) {
+        const alert = this.movementTracker.record(symbol, quote.price, now);
+        if (alert) {
+          this.showMovementAlert(i, quote, alert);
+        } else {
+          const activeAlert = this.activeAlerts.get(symbol);
+          if (activeAlert) this.renderMovementAlert(item, quote, activeAlert);
+        }
+      }
     });
   }
 
@@ -97,6 +154,7 @@ export class StatusBarManager {
       if (i >= this.displayList.length) return;
       const symbol = this.displayList[i];
       if (closedSymbols && !closedSymbols.has(symbol)) return;
+      this.clearMovementAlert(symbol, true);
       const quote = this.lastQuotes.get(symbol);
       if (quote) {
         item.text = this.formatText(quote, true);
@@ -164,7 +222,7 @@ export class StatusBarManager {
     if (quote.low !== undefined)  lines.push(`最低：${price(quote.low)}`);
     const amplitude = calculateAmplitude(quote);
     if (amplitude !== undefined) lines.push(`振幅：${amplitude.toFixed(2)}%`);
-    if (quote.pe !== undefined) lines.push(`PE：${quote.pe.toFixed(2)}`);
+    if (quote.pe !== undefined) lines.push(`PE(TTM)：${quote.pe.toFixed(2)}`);
     if (quote.pb !== undefined) lines.push(`PB：${quote.pb.toFixed(2)}`);
     if (quote.dividendYield !== undefined) lines.push(`股息率：${quote.dividendYield.toFixed(2)}%`);
     if (quote.volume !== undefined) lines.push(`成交量：${quote.volume.toLocaleString()}`);
@@ -208,7 +266,73 @@ export class StatusBarManager {
   }
 
   dispose(): void {
+    for (const timer of this.alertTimers.values()) {
+      this.cancelTimeout(timer);
+    }
+    this.alertTimers.clear();
+    this.activeAlerts.clear();
+    this.movementTracker.clear();
     this.items.forEach(item => item.dispose());
     this.items = [];
+  }
+
+  /** 显示或延续某只股票的短时异动提醒。 */
+  private showMovementAlert(index: number, quote: Quote, alert: PriceMovementAlert): void {
+    const item = this.items[index];
+    if (!item) return;
+
+    this.activeAlerts.set(quote.symbol, alert);
+    this.renderMovementAlert(item, quote, alert);
+
+    const existingTimer = this.alertTimers.get(quote.symbol);
+    if (existingTimer !== undefined) {
+      this.cancelTimeout(existingTimer);
+    }
+    const timer = this.scheduleTimeout(() => {
+      if (this.alertTimers.get(quote.symbol) !== timer) return;
+      this.hideMovementAlert(quote.symbol);
+      this.alertTimers.delete(quote.symbol);
+    }, 30_000);
+    this.alertTimers.set(quote.symbol, timer);
+  }
+
+  /** 隐藏提醒，并按需清理对应股票的价格历史。 */
+  private clearMovementAlert(symbol: string, clearHistory: boolean): void {
+    const timer = this.alertTimers.get(symbol);
+    if (timer !== undefined) {
+      this.cancelTimeout(timer);
+      this.alertTimers.delete(symbol);
+    }
+    this.hideMovementAlert(symbol);
+    if (clearHistory) {
+      this.movementTracker.clear(symbol);
+    }
+  }
+
+  private hideMovementAlert(symbol: string): void {
+    if (!this.activeAlerts.delete(symbol)) return;
+    const colors = this.getColors();
+    this.displayList.forEach((displaySymbol, index) => {
+      if (displaySymbol !== symbol) return;
+      const item = this.items[index];
+      const quote = this.lastQuotes.get(symbol);
+      if (!item || !quote) return;
+      item.text = this.formatText(quote, false);
+      item.color = this.getColor(quote, colors);
+      item.tooltip = this.buildTooltip(quote);
+    });
+  }
+
+  /** 在股票自身的状态栏项中展示异动信息。 */
+  private renderMovementAlert(item: vscode.StatusBarItem, quote: Quote, alert: PriceMovementAlert): void {
+    const icon = alert.direction === 'up' ? '🚀' : '💥';
+    const sign = alert.direction === 'up' ? '+' : '-';
+    const signedPercent = `${sign}${alert.percent.toFixed(2)}%`;
+    item.text = `${this.formatText(quote, false)}｜${icon}`;
+    item.color = this.priceAlertColor;
+    const tooltip = this.buildTooltip(quote);
+    tooltip.appendMarkdown('  \n');
+    tooltip.appendText(`异动提醒：${this.priceAlertWindowSeconds}秒内股价波动 ${signedPercent}。`);
+    item.tooltip = tooltip;
   }
 }

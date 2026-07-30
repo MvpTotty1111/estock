@@ -44,6 +44,7 @@ const window = {
       clear() {},
       appendLine() {},
       show() {},
+      dispose() {},
     };
   },
 };

@@ -15,7 +15,7 @@ export interface Quote {
   low?: number;        // 最低
   volume?: number;      // 成交量（手/股）
   turnover?: number;    // 成交额
-  pe?: number;          // 市盈率。
+  pe?: number;          // 滚动市盈率，基于最近四个季度（TTM）。
   pb?: number;          // 市净率。
   dividendYield?: number;// 股息率（%）。
   time?: string;       // 更新时间
