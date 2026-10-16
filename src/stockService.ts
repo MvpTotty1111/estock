@@ -96,6 +96,18 @@ function formatDetailTable(quotes: Quote[]): string {
   ].join('\n');
 }
 
+/** 统一股票选择菜单中的名称、代码和可选行情。 */
+function stockQuickPickItem(symbol: string, name?: string, quote?: Quote) {
+  const code = stripPrefix(symbol);
+  return {
+    label: nameWithMarket(name || code, symbol),
+    description: quote
+      ? `${code}  ${formatPrice(symbol, quote.price)}  ${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent.toFixed(2)}%`
+      : code,
+    symbol,
+  };
+}
+
 export class StockService {
   private provider!: DataProvider;
   private statusBar!: StatusBarManager;
@@ -332,17 +344,45 @@ export class StockService {
 
     const pick = await vscode.window.showQuickPick(
       results.map(result => ({
-        label: `${result.name}(${result.market})`,
-        description: result.code,
+        ...stockQuickPickItem(result.symbol, result.name),
         detail: result.market === 'A' ? 'A股' : '港股',
         symbol: result.symbol,
         code: result.code,
       })),
-      { placeHolder: `选择要添加的股票：${keyword}` }
+      { placeHolder: `选择要添加的股票：${keyword}`, matchOnDescription: true }
     );
 
     if (!pick) return;
     await this.addStock(pick.symbol);
+  }
+
+  /** 选择要移除的股票，优先使用缓存中的名称。 */
+  async showRemoveStock(): Promise<void> {
+    const symbols = this.watchList;
+    if (symbols.length === 0) {
+      vscode.window.showInformationMessage('股票池为空');
+      return;
+    }
+
+    if (symbols.some(symbol => !this.statusBar.getLastQuote(symbol)?.name)) {
+      await this.waitForActiveRefresh();
+      const missingSymbols = symbols.filter(symbol => !this.statusBar.getLastQuote(symbol)?.name);
+      await this.refreshSymbols(missingSymbols);
+    }
+
+    const pick = await vscode.window.showQuickPick(
+      symbols.map(symbol => {
+        const name = this.statusBar.getLastQuote(symbol)?.name;
+        return stockQuickPickItem(symbol, name);
+      }),
+      {
+        placeHolder: '输入股票代码或名称，选择要从股票池移除的股票',
+        matchOnDescription: true,
+      },
+    );
+    if (pick) {
+      await this.removeStock(pick.symbol);
+    }
   }
 
   /** 从股票池移除 */
@@ -379,11 +419,10 @@ export class StockService {
     const currentDisplay = this.displayList;
     if (position === undefined || !Number.isInteger(position)) {
       const positionPick = await vscode.window.showQuickPick(
-        currentDisplay.map((symbol, index) => ({
-          label: `${index + 1}. ${stripPrefix(symbol)}`,
-          description: this.statusBar.getLastQuote(symbol)?.name,
-          position: index,
-        })),
+        currentDisplay.map((symbol, index) => {
+          const item = stockQuickPickItem(symbol, this.statusBar.getLastQuote(symbol)?.name);
+          return { ...item, label: `${index + 1}. ${item.label}`, position: index };
+        }),
         {
           placeHolder: '输入股票代码或名称，选择要切换的状态栏位置',
           matchOnDescription: true,
@@ -400,15 +439,8 @@ export class StockService {
       pool.map(s => {
         const quote = this.statusBar.getLastQuote(s);
         const isCurrent = currentDisplay[position] === s;
-        const tag = getMarketTag(s);
-        const nameWithTag = quote ? `${quote.name}(${tag})` : `${stripPrefix(s)}(${tag})`;
-        return {
-          label: `${isCurrent ? '● ' : '  '}${stripPrefix(s)}`,
-          description: quote
-            ? `${nameWithTag}  ${formatPrice(s, quote.price)}  ${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent.toFixed(2)}%`
-            : nameWithTag,
-          symbol: s,
-        };
+        const item = stockQuickPickItem(s, quote?.name, quote);
+        return { ...item, label: `${isCurrent ? '● ' : '  '}${item.label}` };
       }),
       {
         placeHolder: `输入股票代码或名称，选择要展示在位置 ${position + 1} 的股票${currentSymbol ? `（当前: ${stripPrefix(currentSymbol)}）` : ''}`,
@@ -455,15 +487,8 @@ export class StockService {
     }
 
     const pick = await vscode.window.showQuickPick(
-      quotes.map(q => {
-        const tag = getMarketTag(q.symbol);
-        return {
-          label: `${q.name}(${tag}) (${stripPrefix(q.symbol)})`,
-          description: `${formatPrice(q.symbol, q.price)}  ${q.changePercent >= 0 ? '+' : ''}${q.changePercent.toFixed(2)}%`,
-          symbol: q.symbol,
-        };
-      }),
-      { placeHolder: '选择要查看详情的股票' }
+      quotes.map(q => stockQuickPickItem(q.symbol, q.name, q)),
+      { placeHolder: '选择要查看详情的股票', matchOnDescription: true }
     );
     if (!pick) return;
 

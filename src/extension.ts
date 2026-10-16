@@ -36,19 +36,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
     }),
 
     vscode.commands.registerCommand('estock.removeStock', async () => {
-      const cfg = vscode.workspace.getConfiguration('estock');
-      const raw = cfg.get<string[]>('watchList', []);
-      if (raw.length === 0) {
-        vscode.window.showInformationMessage('股票池为空');
-        return;
-      }
-      const pick = await vscode.window.showQuickPick(
-        raw.map(s => ({ label: s, symbol: s })),
-        { placeHolder: '选择要从股票池移除的股票' }
-      );
-      if (pick) {
-        await stockService?.removeStock(pick.symbol);
-      }
+      await stockService?.showRemoveStock();
     }),
 
     // 点击状态栏 → 切换该位置的股票
