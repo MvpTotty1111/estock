@@ -115,3 +115,18 @@ export function toXueqiuUrl(symbol: string): string {
     : normalized.toUpperCase();
   return `https://xueqiu.com/S/${xueqiuSymbol}`;
 }
+
+/** 按交易货币格式化总市值，缺失或无效数据使用占位符。 */
+export function formatMarketCap(symbol: string, value: number | undefined): string {
+  return value === 0 ? '--' : formatAmount(symbol, value);
+}
+
+/** 按交易货币格式化金额，保留有效的零成交额。 */
+export function formatAmount(symbol: string, value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value) || value < 0) return '--';
+  const currency = isHK(symbol) ? '港元' : '元';
+  if (value >= 1_000_000_000_000) return `${(value / 1_000_000_000_000).toFixed(2)}万亿${currency}`;
+  if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(2)}亿${currency}`;
+  if (value >= 10_000) return `${(value / 10_000).toFixed(2)}万${currency}`;
+  return `${value.toFixed(2)}${currency}`;
+}

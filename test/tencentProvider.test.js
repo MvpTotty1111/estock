@@ -51,7 +51,10 @@ test('parses China stock valuation metrics from Tencent quote', async () => {
   fields[32] = '-0.43';
   fields[33] = '1211.88';
   fields[34] = '1198.66';
+  fields[37] = '153274';
   fields[39] = '18.28';
+  fields[44] = '15000';
+  fields[45] = '16470.58';
   fields[46] = '6.49';
   fields[64] = '4.30';
 
@@ -61,6 +64,8 @@ test('parses China stock valuation metrics from Tencent quote', async () => {
     const provider = new TencentProvider();
     const quotes = await provider.fetchQuotes(['sh600519']);
 
+    assert.ok(Math.abs(quotes[0].marketCap - 1647058000000) < 0.01, 'Market capitalization should match the source within one cent.');
+    assert.equal(quotes[0].turnover, 1532740000);
     assert.equal(quotes[0].pe, 18.28);
     assert.equal(quotes[0].pb, 6.49);
     assert.equal(quotes[0].dividendYield, 4.3);
@@ -82,6 +87,9 @@ test('parses Hong Kong stock valuation metrics from Tencent quote', async () => 
   fields[32] = '0.31';
   fields[33] = '467.60';
   fields[34] = '455.40';
+  fields[44] = '36000';
+  fields[45] = '37025.2497';
+  fields[37] = '2494969123.500';
   fields[47] = '1.16';
   fields[57] = '15.63';
   fields[58] = '3.31';
@@ -92,6 +100,8 @@ test('parses Hong Kong stock valuation metrics from Tencent quote', async () => 
     const provider = new TencentProvider();
     const quotes = await provider.fetchQuotes(['hk00700']);
 
+    assert.equal(quotes[0].marketCap, 3702524970000);
+    assert.equal(quotes[0].turnover, 2494969123.5);
     assert.equal(quotes[0].pe, 15.63);
     assert.equal(quotes[0].pb, 3.31);
     assert.equal(quotes[0].dividendYield, 1.16);
@@ -269,4 +279,32 @@ test('uses Hong Kong current auction price after 9:15', async () => {
     httpClient.httpGet = originalHttpGet;
     global.Date = OriginalDate;
   }
+});
+
+test('leaves market capitalization unavailable for missing or invalid values', () => {
+  const provider = new TencentProvider();
+  const fields = Array.from({ length: 46 }, () => '');
+  fields[1] = 'Test';
+  fields[3] = '10';
+  assert.equal(provider.parseLine('sh600519', buildTencentLine('sh600519', fields)).marketCap, undefined);
+  fields[45] = '0';
+  assert.equal(provider.parseLine('sh600519', buildTencentLine('sh600519', fields)).marketCap, undefined);
+  fields[45] = '-1';
+  assert.equal(provider.parseLine('sh600519', buildTencentLine('sh600519', fields)).marketCap, undefined);
+  fields[45] = 'N/A';
+  assert.equal(provider.parseLine('sh600519', buildTencentLine('sh600519', fields)).marketCap, undefined);
+});
+
+test('preserves zero turnover and rejects unavailable Tencent turnover', () => {
+  const provider = new TencentProvider();
+  const fields = Array.from({ length: 46 }, () => '');
+  fields[1] = 'Test';
+  fields[3] = '10';
+  assert.equal(provider.parseLine('sh600519', buildTencentLine('sh600519', fields)).turnover, undefined);
+  fields[37] = '0';
+  assert.equal(provider.parseLine('sh600519', buildTencentLine('sh600519', fields)).turnover, 0);
+  fields[37] = 'N/A';
+  assert.equal(provider.parseLine('sh600519', buildTencentLine('sh600519', fields)).turnover, undefined);
+  fields[37] = '-1';
+  assert.equal(provider.parseLine('sh600519', buildTencentLine('sh600519', fields)).turnover, undefined);
 });

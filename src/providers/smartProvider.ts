@@ -40,13 +40,14 @@ export class SmartProvider extends DataProvider {
 
     // 合并到 Map
     const quoteMap = new Map<string, Quote>();
-    const valuationMap = new Map<string, Pick<Quote, 'pe' | 'pb' | 'dividendYield'>>();
+    const valuationMap = new Map<string, Pick<Quote, 'pe' | 'pb' | 'dividendYield' | 'marketCap'>>();
     for (const quotes of results) {
       for (const q of quotes) {
         if (q.symbol.toLowerCase().startsWith('hk')) {
           q.delayed = true;
-        } else if (!useTencentForAStocks && (q.pe !== undefined || q.pb !== undefined || q.dividendYield !== undefined)) {
+        } else if (!useTencentForAStocks && (q.turnover !== undefined || q.marketCap !== undefined || q.pe !== undefined || q.pb !== undefined || q.dividendYield !== undefined)) {
           valuationMap.set(q.symbol, {
+            marketCap: q.marketCap,
             pe: q.pe,
             pb: q.pb,
             dividendYield: q.dividendYield,
@@ -54,6 +55,8 @@ export class SmartProvider extends DataProvider {
           const existing = quoteMap.get(q.symbol);
           if (existing) {
             quoteMap.set(q.symbol, this.mergeValuationMetrics(existing, q));
+          } else {
+            quoteMap.set(q.symbol, q);
           }
           continue;
         }
@@ -82,6 +85,8 @@ export class SmartProvider extends DataProvider {
   private mergeValuationMetrics(base: Quote, valuation: Quote): Quote {
     return {
       ...base,
+      turnover: base.turnover ?? valuation.turnover,
+      marketCap: valuation.marketCap,
       pe: valuation.pe,
       pb: valuation.pb,
       dividendYield: valuation.dividendYield,

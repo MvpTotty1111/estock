@@ -113,6 +113,7 @@ test('merges Tencent valuation metrics into China stock Sina quotes', async () =
           price: 4.86,
           change: 0.12,
           changePercent: 2.53,
+          marketCap: 100_000_000_000,
           pe: 19.45,
           pb: 5.51,
           dividendYield: 7.01,
@@ -126,8 +127,37 @@ test('merges Tencent valuation metrics into China stock Sina quotes', async () =
     assert.deepEqual(tencentCalls, [['sz002027']]);
     assert.equal(quotes[0].price, 4.85);
     assert.equal(quotes[0].changePercent, 2.32);
+    assert.equal(quotes[0].marketCap, 100_000_000_000);
     assert.equal(quotes[0].pe, 19.45);
     assert.equal(quotes[0].pb, 5.51);
     assert.equal(quotes[0].dividendYield, 7.01);
+  });
+});
+
+test('merges market capitalization without replacing the Sina price when other metrics are absent', async () => {
+  await withFakeDate('2026-07-03T01:35:00.000Z', async () => {
+    const provider = new SmartProvider();
+    const base = { symbol: 'sh601318', name: 'Test', price: 50, change: 1, changePercent: 2 };
+    provider.sina = { fetchQuotes: async () => [base] };
+    provider.tencent = { fetchQuotes: async () => [{ ...base, price: 49, marketCap: 100_000_000_000 }] };
+    const [quote] = await provider.fetchQuotes(['sh601318']);
+    assert.equal(quote.price, 50);
+    assert.equal(quote.marketCap, 100_000_000_000);
+  });
+});
+
+test('preserves Sina turnover and falls back to Tencent turnover when absent', async () => {
+  await withFakeDate('2026-07-03T01:35:00.000Z', async () => {
+    const provider = new SmartProvider();
+    const base = { symbol: 'sh601318', name: 'Test', price: 50, change: 1, changePercent: 2 };
+    provider.sina = { fetchQuotes: async () => [{ ...base, turnover: 0 }] };
+    provider.tencent = { fetchQuotes: async () => [{ ...base, price: 49, turnover: 100000000 }] };
+    const [quote] = await provider.fetchQuotes(['sh601318']);
+    assert.equal(quote.turnover, 0);
+    assert.equal(quote.price, 50);
+    provider.sina = { fetchQuotes: async () => [base] };
+    const [fallback] = await provider.fetchQuotes(['sh601318']);
+    assert.equal(fallback.turnover, 100000000);
+    assert.equal(fallback.price, 50);
   });
 });

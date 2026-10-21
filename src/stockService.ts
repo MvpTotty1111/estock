@@ -11,7 +11,7 @@ import { calculateAmplitude, DataProvider, Quote } from './providers/baseProvide
 import { SmartProvider } from './providers/smartProvider';
 import { SinaStockSearchProvider, StockSearchResult } from './providers/stockSearchProvider';
 import { StatusBarManager } from './statusBarManager';
-import { formatPrice, normalizeSymbols, stripPrefix, getMarketTag, nameWithMarket, toXueqiuUrl } from './utils/symbolParser';
+import { formatAmount, formatMarketCap, formatPrice, normalizeSymbols, stripPrefix, getMarketTag, nameWithMarket, toXueqiuUrl } from './utils/symbolParser';
 import { HolidayCalendar } from './utils/holidayCalendar';
 import { getMarketStatusForSymbol } from './utils/marketTime';
 
@@ -70,10 +70,12 @@ function formatDetailTable(quotes: Quote[]): string {
     { title: '最高', value: quote => optionalPrice(quote, quote.high) },
     { title: '最低', value: quote => optionalPrice(quote, quote.low) },
     { title: '振幅', value: quote => optionalNumber(calculateAmplitude(quote), '%') },
+    { title: '总市值', value: quote => formatMarketCap(quote.symbol, quote.marketCap) },
     { title: 'PE(TTM)', value: quote => optionalNumber(quote.pe) },
     { title: 'PB', value: quote => optionalNumber(quote.pb) },
     { title: '股息率', value: quote => optionalNumber(quote.dividendYield, '%') },
     { title: '成交量', value: quote => quote.volume === undefined ? '--' : quote.volume.toLocaleString() },
+    { title: '成交额', value: quote => formatAmount(quote.symbol, quote.turnover) },
     {
       title: '更新时间',
       value: quote => quote.time || '--',
@@ -102,7 +104,7 @@ function stockQuickPickItem(symbol: string, name?: string, quote?: Quote) {
   return {
     label: nameWithMarket(name || code, symbol),
     description: quote
-      ? `${code}  ${formatPrice(symbol, quote.price)}  ${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent.toFixed(2)}%`
+      ? `${code}  ${formatPrice(symbol, quote.price)}  ${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent.toFixed(2)}%  总市值：${formatMarketCap(symbol, quote.marketCap)}`
       : code,
     symbol,
   };
@@ -511,10 +513,12 @@ export class StockService {
     if (quote.low !== undefined) lines.push(`  最低：    ${price(quote.low)}`);
     const amplitude = calculateAmplitude(quote);
     if (amplitude !== undefined) lines.push(`  振幅：    ${amplitude.toFixed(2)}%`);
+    lines.push(`  总市值：  ${formatMarketCap(quote.symbol, quote.marketCap)}`);
     if (quote.pe !== undefined) lines.push(`  PE(TTM)： ${quote.pe.toFixed(2)}`);
     if (quote.pb !== undefined) lines.push(`  PB：      ${quote.pb.toFixed(2)}`);
     if (quote.dividendYield !== undefined) lines.push(`  股息率：  ${quote.dividendYield.toFixed(2)}%`);
     if (quote.volume !== undefined) lines.push(`  成交量：  ${quote.volume.toLocaleString()}`);
+    lines.push(`  成交额：  ${formatAmount(quote.symbol, quote.turnover)}`);
     if (quote.time) {
       const delayTag = quote.delayed ? ' (延迟约15分钟)' : '';
       lines.push(`  更新时间：${quote.time}${delayTag}`);

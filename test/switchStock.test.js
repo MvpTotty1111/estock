@@ -304,7 +304,10 @@ test('showDetail includes a clickable Xueqiu URL', async () => {
   const cache = new Map();
 
   vscode.workspace.getConfiguration = () => config;
-  vscode.window.showQuickPick = async (items) => items[0];
+  vscode.window.showQuickPick = async (items) => {
+    assert.match(items[0].description, /总市值：265\.00亿港元/);
+    return items[0];
+  };
   vscode.window.createOutputChannel = () => ({
     clear() {},
     appendLine(value) {
@@ -326,6 +329,9 @@ test('showDetail includes a clickable Xueqiu URL', async () => {
         previousClose: 26,
         high: 27,
         low: 25,
+        marketCap: 26_500_000_000,
+        volume: 7654321,
+        turnover: 265_000_000,
         pe: 15.63,
         pb: 3.31,
         dividendYield: 1.16,
@@ -346,6 +352,8 @@ test('showDetail includes a clickable Xueqiu URL', async () => {
 
     assert.match(output[0], /雪球详情：https:\/\/xueqiu\.com\/S\/00772/);
     assert.match(output[0], /振幅：\s+7\.69%/);
+    assert.match(output[0], /总市值：\s+265\.00亿港元/);
+    assert.match(output[0], /成交量：\s+7,654,321\n  成交额：\s+2\.65亿港元/);
     assert.match(output[0], /PE\(TTM\)：\s+15\.63/);
     assert.match(output[0], /PB：\s+3\.31/);
     assert.match(output[0], /股息率：\s+1\.16%/);
@@ -560,7 +568,9 @@ test('showWatchListDetail outputs every stock with complete detail columns', asy
         open: 27,
         high: 27.5,
         low: 26,
+        marketCap: 26_500_000_000,
         volume: 7654321,
+        turnover: 265_000_000,
         pe: 15.63,
         pb: 3.31,
         dividendYield: 1.16,
@@ -579,8 +589,11 @@ test('showWatchListDetail outputs every stock with complete detail columns', asy
 
     assert.equal(output.length, 1);
     assert.match(output[0], /名称\s+\|\s+代码\s+\|\s+当前价\s+\|\s+涨跌\s+\|\s+涨跌幅/);
-    assert.match(output[0], /今开\s+\|\s+最高\s+\|\s+最低\s+\|\s+振幅\s+\|\s+PE\(TTM\)\s+\|\s+PB/);
-    assert.match(output[0], /股息率\s+\|\s+成交量\s+\|\s+更新时间\s+\|\s+雪球详情/);
+    assert.match(output[0], /今开\s+\|\s+最高\s+\|\s+最低\s+\|\s+振幅\s+\|\s+总市值\s+\|\s+PE\(TTM\)\s+\|\s+PB/);
+    assert.match(output[0], /总市值/);
+    assert.match(output[0], /阅文集团.*265\.00亿港元.*7,654,321.*2\.65亿港元/);
+    assert.match(output[0], /港股创新药ETF.*--/);
+    assert.match(output[0], /股息率\s+\|\s+成交量\s+\|\s+成交额\s+\|\s+更新时间\s+\|\s+雪球详情/);
     assert.match(output[0], /港股创新药ETF\(A\).*513120.*1\.234.*\+0\.002.*\+0\.16%.*1\.230.*1\.240.*1\.220.*1\.62%.*12\.30.*1\.50.*2\.00%.*1,234,567.*https:\/\/xueqiu\.com\/S\/SH513120/);
     assert.match(output[0], /阅文集团\(H\).*00772.*26\.50.*-0\.50.*-1\.85%.*27\.00.*27\.50.*26\.00.*5\.56%.*15\.63.*3\.31.*1\.16%.*7,654,321.*2026-07-30 15:00:00.*https:\/\/xueqiu\.com\/S\/00772/);
     assert.doesNotMatch(output[0], /延迟约15分钟/);

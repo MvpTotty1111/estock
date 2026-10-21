@@ -12,6 +12,8 @@ import {
   getCurrencySymbol,
   toXueqiuUrl,
   formatPrice,
+  formatMarketCap,
+  formatAmount,
 } from './utils/symbolParser';
 import { PriceMovementAlert, PriceMovementTracker } from './priceMovementTracker';
 
@@ -222,10 +224,12 @@ export class StatusBarManager {
     if (quote.low !== undefined)  lines.push(`最低：${price(quote.low)}`);
     const amplitude = calculateAmplitude(quote);
     if (amplitude !== undefined) lines.push(`振幅：${amplitude.toFixed(2)}%`);
+    lines.push(`总市值：${formatMarketCap(quote.symbol, quote.marketCap)}`);
     if (quote.pe !== undefined) lines.push(`PE(TTM)：${quote.pe.toFixed(2)}`);
     if (quote.pb !== undefined) lines.push(`PB：${quote.pb.toFixed(2)}`);
     if (quote.dividendYield !== undefined) lines.push(`股息率：${quote.dividendYield.toFixed(2)}%`);
     if (quote.volume !== undefined) lines.push(`成交量：${quote.volume.toLocaleString()}`);
+    lines.push(`成交额：${formatAmount(quote.symbol, quote.turnover)}`);
     if (quote.time) {
       const delayTag = quote.delayed ? ' (延迟约15分钟)' : '';
       lines.push(`更新时间：${quote.time}${delayTag}`);

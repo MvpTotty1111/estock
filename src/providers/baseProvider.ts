@@ -14,7 +14,8 @@ export interface Quote {
   high?: number;       // 最高
   low?: number;        // 最低
   volume?: number;      // 成交量（手/股）
-  turnover?: number;    // 成交额
+  turnover?: number;    // 成交额，以交易货币的元为单位。
+  marketCap?: number;   // 总市值，以交易货币的元为单位，A 股为人民币，港股为港元。
   pe?: number;          // 滚动市盈率，基于最近四个季度（TTM）。
   pb?: number;          // 市净率。
   dividendYield?: number;// 股息率（%）。

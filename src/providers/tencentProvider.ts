@@ -81,6 +81,8 @@ export class TencentProvider extends DataProvider {
     const high = fields.length > 33 ? parseFloat(fields[33]) || 0 : 0;
     const low = fields.length > 34 ? parseFloat(fields[34]) || 0 : 0;
     const valuation = this.parseValuationMetrics(symbol, fields);
+    const turnover = this.parseOptionalNumber(fields[37]);
+    const marketCapInHundredMillions = this.parseOptionalNumber(fields[45]);
 
     return {
       symbol, name, price: current, change, changePercent,
@@ -89,6 +91,14 @@ export class TencentProvider extends DataProvider {
       high: high || undefined,
       low: low || undefined,
       volume: volume || undefined,
+      // 腾讯 A 股成交额以万元计，港股以港元计。
+      turnover: turnover !== undefined && turnover >= 0
+        ? turnover * (symbol.toLowerCase().startsWith('hk') ? 1 : 10_000)
+        : undefined,
+      // 腾讯总市值字段的单位为亿，统一换算为交易货币的元。
+      marketCap: marketCapInHundredMillions !== undefined && marketCapInHundredMillions > 0
+        ? marketCapInHundredMillions * 100_000_000
+        : undefined,
       pe: valuation.pe,
       pb: valuation.pb,
       dividendYield: valuation.dividendYield,

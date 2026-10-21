@@ -87,6 +87,9 @@ export class SinaProvider extends DataProvider {
       high: high || undefined,
       low: low || undefined,
       volume: volume || undefined,
+      turnover: fields[9]?.trim() && Number.isFinite(Number(fields[9])) && Number(fields[9]) >= 0
+        ? Number(fields[9])
+        : undefined,
       time: time || undefined,
     };
   }
@@ -122,7 +125,7 @@ export class SinaProvider extends DataProvider {
    * 字段索引（与 A股完全不同！）:
    *   0:英文名 1:中文名 2:今开 3:昨收 4:最高 5:最低
    *   6:当前 7:涨跌额 8:涨跌幅% 9:买一 10:卖一
-   *   11:成交量 12:成交额 ...
+   *   11:成交额（港元） 12:成交量 ...
    *   17:日期 18:时间
    */
   private parseHKLine(symbol: string, line: string): Quote {
@@ -142,7 +145,7 @@ export class SinaProvider extends DataProvider {
     // 港股直接提供了涨跌额和涨跌幅
     const change = parseFloat(fields[7]) || 0;
     const changePercent = parseFloat(fields[8]) || 0;
-    const volume = fields.length > 11 ? parseInt(fields[11]) || 0 : 0;
+    const volume = fields.length > 12 ? parseInt(fields[12]) || 0 : 0;
 
     const dateStr = fields.length > 17 ? fields[17] : '';
     const timeStr = fields.length > 18 ? fields[18] : '';
@@ -155,6 +158,9 @@ export class SinaProvider extends DataProvider {
       high: high || undefined,
       low: low || undefined,
       volume: volume || undefined,
+      turnover: fields[11]?.trim() && Number.isFinite(Number(fields[11])) && Number(fields[11]) >= 0
+        ? Number(fields[11])
+        : undefined,
       time: time || undefined,
     };
   }

@@ -49,3 +49,31 @@ test('keeps China stock at previous close when auction current price is zero', a
     global.Date = OriginalDate;
   }
 });
+
+test('parses China turnover in yuan and preserves zero', () => {
+  const provider = new SinaProvider();
+  const fields = Array.from({ length: 32 }, () => '');
+  fields[0] = 'Test';
+  fields[3] = '10';
+  fields[8] = '1160528';
+  fields[9] = '1532738292.000';
+  const quote = provider.parseAStockLine('sh600519', buildSinaLine('sh600519', fields));
+  assert.equal(quote.turnover, 1532738292);
+  assert.equal(quote.volume, 1160528);
+  fields[9] = '0';
+  assert.equal(provider.parseAStockLine('sh600519', buildSinaLine('sh600519', fields)).turnover, 0);
+  fields[9] = '';
+  assert.equal(provider.parseAStockLine('sh600519', buildSinaLine('sh600519', fields)).turnover, undefined);
+});
+
+test('parses Hong Kong turnover and volume from their distinct fields', () => {
+  const provider = new SinaProvider();
+  const fields = Array.from({ length: 19 }, () => '');
+  fields[1] = 'Test';
+  fields[6] = '407.2';
+  fields[11] = '1384249377';
+  fields[12] = '3369335';
+  const quote = provider.parseHKLine('hk00700', buildSinaLine('hk00700', fields));
+  assert.equal(quote.turnover, 1384249377);
+  assert.equal(quote.volume, 3369335);
+});

@@ -104,10 +104,12 @@ test('display format supports currency placeholder for China and Hong Kong stock
         open: 49.5,
         high: 51,
         low: 48,
+        marketCap: 100_000_000_000,
         pe: 8.88,
         pb: 1.23,
         dividendYield: 4.56,
         volume: 12345,
+        turnover: 1_234_500_000,
         time: '2026-07-14 15:00:00',
       },
       {
@@ -123,6 +125,8 @@ test('display format supports currency placeholder for China and Hong Kong stock
     assert.equal(items[1].text, '腾讯控股(H) -0.47% ($421.00)');
     assert.match(items[0].tooltip.value, /\[雪球详情\]\(https:\/\/xueqiu\.com\/S\/SH601318\)/);
     assert.match(items[1].tooltip.value, /\[雪球详情\]\(https:\/\/xueqiu\.com\/S\/00700\)/);
+    assert.match(items[0].tooltip.value, /总市值：1000\.00亿元/);
+    assert.match(items[1].tooltip.value, /总市值：--/);
     assert.match(items[0].tooltip.value, /今开：49\.50/);
     assert.match(items[0].tooltip.value, /最高：51\.00/);
     assert.match(items[0].tooltip.value, /最低：48\.00/);
@@ -130,7 +134,8 @@ test('display format supports currency placeholder for China and Hong Kong stock
     assert.match(items[0].tooltip.value, /PE\(TTM\)：8\.88/);
     assert.match(items[0].tooltip.value, /PB：1\.23/);
     assert.match(items[0].tooltip.value, /股息率：4\.56%/);
-    assert.match(items[0].tooltip.value, /成交量：12,345/);
+    assert.match(items[0].tooltip.value, /成交量：12,345  \n成交额：12\.35亿元/);
+    assert.match(items[1].tooltip.value, /成交额：--/);
     assert.match(items[0].tooltip.value, /更新时间：2026-07-14 15:00:00/);
     assert.match(items[0].tooltip.value, /  \n当前价/);
     assert.doesNotMatch(items[0].tooltip.value, /\n\n/);

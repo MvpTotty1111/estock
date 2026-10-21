@@ -3,6 +3,8 @@ const test = require('node:test');
 
 const {
   formatPrice,
+  formatMarketCap,
+  formatAmount,
   isExchangeTradedFund,
   normalizeSymbol,
   toXueqiuUrl,
@@ -46,4 +48,31 @@ test('builds Xueqiu URLs for Shanghai and Shenzhen stocks', () => {
 
 test('builds Xueqiu URLs for Hong Kong stocks without a market prefix', () => {
   assert.equal(toXueqiuUrl('hk00772'), 'https://xueqiu.com/S/00772');
+});
+
+test('formats market capitalization with currency and scaled units', () => {
+  assert.equal(formatMarketCap('sh600519', 1647058000000), '1.65万亿元');
+  assert.equal(formatMarketCap('hk00700', 3702524970000), '3.70万亿港元');
+  assert.equal(formatMarketCap('hk00772', 26500000000), '265.00亿港元');
+  assert.equal(formatMarketCap('sz002027', 100000000), '1.00亿元');
+  assert.equal(formatMarketCap('sz002027', 10000), '1.00万元');
+  assert.equal(formatMarketCap('sz002027', 9999), '9999.00元');
+});
+
+test('uses a placeholder for unavailable market capitalization', () => {
+  assert.equal(formatMarketCap('sh600519', undefined), '--');
+  assert.equal(formatMarketCap('sh600519', 0), '--');
+  assert.equal(formatMarketCap('sh600519', -1), '--');
+  assert.equal(formatMarketCap('sh600519', NaN), '--');
+  assert.equal(formatMarketCap('sh600519', Infinity), '--');
+});
+
+test('formats turnover with currency and preserves zero amounts', () => {
+  assert.equal(formatAmount('sh600519', 1532738292), '15.33亿元');
+  assert.equal(formatAmount('hk00700', 2494969123.5), '24.95亿港元');
+  assert.equal(formatAmount('sh600519', 0), '0.00元');
+  assert.equal(formatAmount('hk00700', 0), '0.00港元');
+  assert.equal(formatAmount('hk00700', undefined), '--');
+  assert.equal(formatAmount('sh600519', NaN), '--');
+  assert.equal(formatAmount('sh600519', -1), '--');
 });
